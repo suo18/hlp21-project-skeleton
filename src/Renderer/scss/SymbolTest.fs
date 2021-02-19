@@ -1,4 +1,4 @@
-﻿module Symbol
+module Symbol
 open Fable.React
 open Fable.React.Props
 open Browser
@@ -16,7 +16,7 @@ open Helpers
 /// The real type will obviously be much larger.
 /// Complex information that never changes (other than Id) should 
 /// probably not be here, but looked up via some function
-/// from a more compact form, so that comparison of two Symbols to
+/// from a more compact form, so that comparison of two Symbols to 
 /// determine are they the same is fast.
 type Symbol =
     {
@@ -24,8 +24,10 @@ type Symbol =
         LastDragPos : XYPos
         IsDragging : bool
         Id : CommonTypes.ComponentId
+        Type: Component // a new symbol of type component
     }
 
+let makeSymbol (comp: component) ()
 
 type Model = Symbol list
 
@@ -43,7 +45,7 @@ type Msg =
     /// coords not adjusted for top-level zoom
     | Dragging of sId : CommonTypes.ComponentId * pagePos: XYPos
     | EndDragging of sId : CommonTypes.ComponentId
-    | AddCircle of XYPos // used by demo code to add a circle
+    | AddCircle of XYPos // add a symbol // change made by me
     | DeleteSymbol of sId:CommonTypes.ComponentId 
     | UpdateSymbolModelWithComponent of CommonTypes.Component // Issie interface
 
