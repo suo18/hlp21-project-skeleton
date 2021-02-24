@@ -26,7 +26,7 @@ module CommonTypes
         // If the port is used in a Connection record as Source or Target, the Number is None. 
         PortNumber : int option
         PortType : PortType
-        HostId : string
+        HostId : string // what is host id ?
     }
 
     /// Name identified the LoadedComponent used.
@@ -67,6 +67,7 @@ module CommonTypes
         // No initial state for DFF or Register? Default 0.
         | DFF | DFFE | Register of BusWidth: int | RegisterE of BusWidth: int 
         | AsyncROM of Memory | ROM of Memory | RAM of Memory // memory is contents
+        // | Circle of Radius : int
 
     /// JSComponent mapped to F# record.
     /// Id uniquely identifies the component within a sheet and is used by draw2d library.
