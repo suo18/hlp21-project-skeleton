@@ -64,9 +64,9 @@ let displaySvgWithZoom (zoom:float) (svgReact: ReactElement) (dispatch: Dispatch
                             DominantBaseline "middle" // vertical alignment vs (X,Y)
                             FontSize "40px"
                             FontWeight "Bold"
-                            Fill "Green" // font color
+                            Fill "Black" // font color
                         ]
-                    ] [str "sample text"]
+                    ] [str "Symbol Demo - suo18"]
 
                     svgReact // the application code
 
