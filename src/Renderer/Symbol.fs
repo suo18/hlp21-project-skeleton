@@ -24,6 +24,8 @@ type SymbolCategory =
     | IO 
     | Buses  
     | Gates
+    | Adder
+    | FlipFlop
     | Unknown
 
 type Symbol =
@@ -75,6 +77,9 @@ let posOf x y = {X=x;Y=y}
 let getSymbolCategory (comp : CommonTypes.ComponentType) = 
     match comp with 
     | And | Or | Not | Nand | Nor | Xor | Xnor ->  Gates
+    | NbitsAdder x -> Adder
+    | DFF | DFFE -> FlipFlop
+    | Input y | Output y -> IO
     |_-> Unknown
 
 
@@ -87,6 +92,9 @@ let getGateDisplayChar (comp: CommonTypes.ComponentType) =
     | Nor -> "≥1"
     | Xor -> "=1"
     | Xnor -> "=1"
+    | NbitsAdder x -> sprintf "%A" (x - 1) 
+    | DFF -> "DFF"
+    | DFFE -> "DFFE"
     |_-> ""
 
 
@@ -95,6 +103,19 @@ let getIsInverter (comp: CommonTypes.ComponentType) =
     | And | Or | Xor -> false
     | Not | Nand | Nor | Xnor-> true
     |_-> false
+
+let IsEnable (comp: CommonTypes.ComponentType) = 
+    match comp with 
+    | DFFE -> true
+    | DFF -> false
+    | _-> false
+
+let isInput (comp: CommonTypes.ComponentType) = 
+    match comp with
+    | Input a -> true
+    | _-> false
+
+// let IsClocked (comp: ComponentType) = 
 //-----------------------Skeleton Message type for symbols---------------------//
 
 /// Symbol creation: a unique Id is given to the symbol, found from uuid.
@@ -117,6 +138,11 @@ let createNewSymbol (input: XYPos * CommonTypes.ComponentType) =
 let init () = 
     [
         ({X = 300.; Y = 600.}, And);
+        ({X = 300.; Y = 800.}, NbitsAdder 5);
+        ({X = 200.; Y = 500.}, Input 5);
+        ({X = 300.; Y = 500.}, Output 5);
+        ({X = 300.; Y = 100.}, DFF);
+        ({X = 500.; Y = 200.}, DFFE);
         ({X = 470.; Y = 500.}, Or);
         ({X = 450.; Y = 600.}, Not);
         ({X = 470.; Y = 400.}, Nor);
@@ -180,7 +206,7 @@ let update (msg : Msg) (model : Model): Model*Cmd<'a>  =
 /// Input to react component (which does not re-evaluate when inputs stay the same)
 /// This generates View (react virtual DOM SVG elements) for one symbol
     /// these are all the different types of symbols we can have here 
-type RenderGateProps =                
+type RenderSymbolProps =                
 ///WHY WAS THIS MADE PRIVATE IN ORIGINAL CODE
     {
         Rectangle : Symbol // name works for the demo!
@@ -188,9 +214,215 @@ type RenderGateProps =
         key: string // special field used by react to detect whether lists have changed, set to symbol Id
     }
 
+
 let renderGate = 
     FunctionComponent.Of(
-        fun (props : RenderGateProps) ->
+        fun (props : RenderSymbolProps) ->
+        let displaychar = getGateDisplayChar props.Rectangle.Type
+        let handleMouseMove =
+            Hooks.useRef(fun (ev : Types.Event) ->
+                let ev = ev :?> Types.MouseEvent
+                // x,y coordinates here do not compensate for transform in Sheet
+                // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
+                Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                |> props.Dispatch
+            )
+
+        let color =
+            if props.Rectangle.IsDragging then
+                "green"
+            else
+                "grey"
+        g   [ 
+                OnMouseUp (fun ev -> 
+                        document.removeEventListener("mousemove", handleMouseMove.current)
+                        EndDragging props.Rectangle.Id
+                        |> props.Dispatch
+                    )
+                OnMouseDown (fun ev -> 
+                    // See note above re coords wrong if zoom <> 1.0
+                    StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                    |> props.Dispatch
+                    document.addEventListener("mousemove", handleMouseMove.current)
+                )
+                // if isOutput then
+                //     SVGAttr.Transform (str "rotate(180 0 0)" )
+            ]
+            [
+                rect
+                    [ 
+                        
+                        X props.Rectangle.Pos.X
+                        Y props.Rectangle.Pos.Y
+                        SVGAttr.Width 75.
+                        SVGAttr.Height 75.
+                        SVGAttr.Fill color
+                        SVGAttr.FillOpacity 0.75
+                        SVGAttr.Stroke "Black"
+                        SVGAttr.StrokeWidth 1
+                    ]
+                    [ ]
+
+                text
+                    [ X (props.Rectangle.Pos.X + 35.) 
+                      Y (props.Rectangle.Pos.Y + 20.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "30px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str displaychar]
+
+                // line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 15.); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 15.); Style[Stroke "Black"]] []
+                // line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 60.); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 60.); Style[Stroke "Black"]] []
+                line [ X1 (props.Rectangle.Pos.X + 75.); Y1 (props.Rectangle.Pos.Y + 37.5); X2 (props.Rectangle.Pos.X + 95.); Y2 (props.Rectangle.Pos.Y + 37.5); Style[Stroke "Black"]] []
+                if getIsInverter props.Rectangle.Type
+                then line [ X1 (props.Rectangle.Pos.X + 75.); Y1 (props.Rectangle.Pos.Y + 25.); X2 (props.Rectangle.Pos.X + 85.); Y2 (props.Rectangle.Pos.Y + 37.5); Style[Stroke "Black"]] []
+            ]
+    )
+
+let renderNbitsAdder = 
+    FunctionComponent.Of(
+        fun (props : RenderSymbolProps) ->
+        let displaychar = getGateDisplayChar props.Rectangle.Type
+        let handleMouseMove =
+            Hooks.useRef(fun (ev : Types.Event) ->
+                let ev = ev :?> Types.MouseEvent
+                // x,y coordinates here do not compensate for transform in Sheet
+                // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
+                Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                |> props.Dispatch
+            )
+
+        let color =
+            if props.Rectangle.IsDragging then
+                "green"
+            else
+                "grey"
+        g   [ 
+                OnMouseUp (fun ev -> 
+                        document.removeEventListener("mousemove", handleMouseMove.current)
+                        EndDragging props.Rectangle.Id
+                        |> props.Dispatch
+                    )
+                OnMouseDown (fun ev -> 
+                    // See note above re coords wrong if zoom <> 1.0
+                    StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                    |> props.Dispatch
+                    document.addEventListener("mousemove", handleMouseMove.current)
+                )
+            ]
+            [
+                rect
+                    [ 
+                        
+                        X props.Rectangle.Pos.X
+                        Y props.Rectangle.Pos.Y
+                        SVGAttr.Width 90.
+                        SVGAttr.Height 125.
+                        SVGAttr.Fill color
+                        SVGAttr.FillOpacity 0.75
+                        SVGAttr.Stroke "Black"
+                        SVGAttr.StrokeWidth 1
+                    ]
+                    [ ]
+
+                text
+                    [ X (props.Rectangle.Pos.X + 45.) 
+                      Y (props.Rectangle.Pos.Y )
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "15px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "adder(" + displaychar + ":0)"]
+                //left inputs    
+                text
+                    [ X (props.Rectangle.Pos.X + 10.) 
+                      Y (props.Rectangle.Pos.Y + 26.25)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "Cin"]
+                text
+                    [ X (props.Rectangle.Pos.X + 5.) 
+                      Y (props.Rectangle.Pos.Y  + 57.5)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "A"]
+                text
+                    [ X (props.Rectangle.Pos.X + 5.) 
+                      Y (props.Rectangle.Pos.Y + 88.75)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "B"]
+                //right outputs
+                text
+                    [ X (props.Rectangle.Pos.X + 75.) 
+                      Y (props.Rectangle.Pos.Y + 38.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "Sum"] 
+                text
+                    [ X (props.Rectangle.Pos.X + 75.) 
+                      Y (props.Rectangle.Pos.Y + 80.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "Cout"]                                                                                                  
+
+                line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 31.25); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 31.25); Style[Stroke "Black"]] []
+                line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 62.5); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 62.5); Style[Stroke "Black"]] []
+                line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 93.75); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 93.75); Style[Stroke "Black"]] []
+                line [ X1 (props.Rectangle.Pos.X + 90.); Y1 (props.Rectangle.Pos.Y + 41.67); X2 (props.Rectangle.Pos.X + 110.); Y2 (props.Rectangle.Pos.Y + 41.67); Style[Stroke "Black"]] []
+                line [ X1 (props.Rectangle.Pos.X + 90.); Y1 (props.Rectangle.Pos.Y + 83.33); X2 (props.Rectangle.Pos.X + 110.); Y2 (props.Rectangle.Pos.Y + 83.33); Style[Stroke "Black"]] []
+            ]
+    )
+
+let renderFlipFlop = 
+    FunctionComponent.Of(
+        fun (props : RenderSymbolProps) ->
         let displaychar = getGateDisplayChar props.Rectangle.Type
         let handleMouseMove =
             Hooks.useRef(fun (ev : Types.Event) ->
@@ -236,23 +468,145 @@ let renderGate =
 
                 text
                     [ X (props.Rectangle.Pos.X + 35.) 
-                      Y (props.Rectangle.Pos.Y + 20.)
+                      Y (props.Rectangle.Pos.Y )
                       Style
                             [
                                  TextAnchor "middle"
                                  DominantBaseline "hanging"
-                                 FontSize "30px"
+                                 FontSize "15px"
                                  FontWeight "Normal"
                                  Fill "Black"
                              ]
                     ] 
                     [str displaychar]
+                
+                //left symbols
+                text
+                    [ X (props.Rectangle.Pos.X + 8.) 
+                      Y (props.Rectangle.Pos.Y + 25.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str "D"]
 
-                line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 15.); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 15.); Style[Stroke "Black"]] []
-                line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 60.); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 60.); Style[Stroke "Black"]] []
-                line [ X1 (props.Rectangle.Pos.X + 75.); Y1 (props.Rectangle.Pos.Y + 37.5); X2 (props.Rectangle.Pos.X + 95.); Y2 (props.Rectangle.Pos.Y + 37.5); Style[Stroke "Black"]] []
-                if getIsInverter props.Rectangle.Type
-                then line [ X1 (props.Rectangle.Pos.X + 75.); Y1 (props.Rectangle.Pos.Y + 25.); X2 (props.Rectangle.Pos.X + 85.); Y2 (props.Rectangle.Pos.Y + 37.5); Style[Stroke "Black"]] []
+                text
+                    [ X (props.Rectangle.Pos.X + 18.) 
+                      Y (props.Rectangle.Pos.Y + 49.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str "clk"]
+                //right symbol
+                text
+                    [ X (props.Rectangle.Pos.X + 65.) 
+                      Y (props.Rectangle.Pos.Y + 37.5)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str "Q"]
+                //optional enable
+                if IsEnable props.Rectangle.Type
+                then
+                    text
+                        [ X (props.Rectangle.Pos.X + 37.5) 
+                          Y (props.Rectangle.Pos.Y + 65.)
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "10px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str "EN"]
+                // clock indentation with two intersecting lines
+                line [ X1 (props.Rectangle.Pos.X); Y1 (props.Rectangle.Pos.Y + 50.); X2 (props.Rectangle.Pos.X + 7.5); Y2 (props.Rectangle.Pos.Y + 55.); Style[Stroke "Black"]] []
+                line [ X1 (props.Rectangle.Pos.X); Y1 (props.Rectangle.Pos.Y + 60.); X2 (props.Rectangle.Pos.X + 7.5); Y2 (props.Rectangle.Pos.Y + 55.); Style[Stroke "Black"]] []
+            ]
+    )
+
+let renderIO = 
+    FunctionComponent.Of(
+        fun (props : RenderSymbolProps) ->
+        let handleMouseMove =
+            Hooks.useRef(fun (ev : Types.Event) ->
+                let ev = ev :?> Types.MouseEvent
+                // x,y coordinates here do not compensate for transform in Sheet
+                // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
+                Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                |> props.Dispatch
+            )
+        let rotation = 180
+
+        let color =
+            if props.Rectangle.IsDragging then
+                "green"
+            else
+                "grey"
+        g   [ 
+                OnMouseUp (fun ev -> 
+                        document.removeEventListener("mousemove", handleMouseMove.current)
+                        EndDragging props.Rectangle.Id
+                        |> props.Dispatch
+                    )
+                OnMouseDown (fun ev -> 
+                    // See note above re coords wrong if zoom <> 1.0
+                    StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                    |> props.Dispatch
+                    document.addEventListener("mousemove", handleMouseMove.current)
+                )
+            ]
+            [   if isInput props.Rectangle.Type then
+                    polygon
+                        [ 
+                            SVGAttr.Points (sprintf "%0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f"
+                                                        props.Rectangle.Pos.X props.Rectangle.Pos.Y (props.Rectangle.Pos.X + 50.)
+                                                        props.Rectangle.Pos.Y (props.Rectangle.Pos.X + 70.) (props.Rectangle.Pos.Y + 25.) 
+                                                        (props.Rectangle.Pos.X + 50.) (props.Rectangle.Pos.Y + 50.) props.Rectangle.Pos.X (props.Rectangle.Pos.Y + 50.))
+                            X props.Rectangle.Pos.X
+                            Y props.Rectangle.Pos.Y
+                            SVGAttr.Fill color
+                            SVGAttr.FillOpacity 0.75
+                            SVGAttr.Stroke "Black"
+                            SVGAttr.StrokeWidth 1
+                        ]
+                        [ ]
+                else 
+                    polygon
+                        [ 
+                            SVGAttr.Points (sprintf "%0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f"
+                                                    (props.Rectangle.Pos.X + 20.) (props.Rectangle.Pos.Y + 50.)
+                                                    (props.Rectangle.Pos.X ) (props.Rectangle.Pos.Y + 25.)
+                                                    (props.Rectangle.Pos.X + 20.) (props.Rectangle.Pos.Y) 
+                                                    (props.Rectangle.Pos.X + 70.) props.Rectangle.Pos.Y
+                                                    (props.Rectangle.Pos.X + 70.) (props.Rectangle.Pos.Y + 50.))
+                            X props.Rectangle.Pos.X
+                            Y props.Rectangle.Pos.Y
+                            SVGAttr.Fill color
+                            SVGAttr.FillOpacity 0.75
+                            SVGAttr.Stroke "Black"
+                            SVGAttr.StrokeWidth 1
+                        ]
+                        [ ]
             ]
     )
 
@@ -266,81 +620,25 @@ let private renderSymbol dispatch (sym: Symbol) =
             Dispatch = dispatch
             key = (string) sym.Id
         })
+    | Adder ->
+        renderNbitsAdder({
+            Rectangle = sym
+            Dispatch = dispatch
+            key = (string) sym.Id
+        })
+    | FlipFlop ->
+        renderFlipFlop({
+            Rectangle = sym
+            Dispatch = dispatch
+            key = (string) sym.Id
+        })
+    | IO ->
+        renderIO({
+            Rectangle = sym
+            Dispatch = dispatch
+            key = (string) sym.Id
+        })
     |_-> failwith "not implemented"
-
-//     match comp with
-//     | NbitsAdder x ->
-//             FunctionComponent.Of(
-//                 fun (props : RenderSymbolProps) ->
-//                     let handleMouseMove =
-//                         Hooks.useRef(fun (ev : Types.Event) ->
-//                             let ev = ev :?> Types.MouseEvent
-//                             // x,y coordinates here do not compensate for transform in Sheet
-//                             // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
-//                             Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
-//                             |> props.Dispatch
-//                         )
-
-//                     let color =
-//                         if props.Rectangle.IsDragging then
-//                             "green"
-//                         else
-//                             "grey"
-//                     g   [ 
-//                             OnMouseUp (fun ev -> 
-//                                     document.removeEventListener("mousemove", handleMouseMove.current)
-//                                     EndDragging props.Rectangle.Id
-//                                     |> props.Dispatch
-//                                 )
-//                             OnMouseDown (fun ev -> 
-//                                 // See note above re coords wrong if zoom <> 1.0
-//                                 StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
-//                                 |> props.Dispatch
-//                                 document.addEventListener("mousemove", handleMouseMove.current)
-//                             )
-//                         ]
-//                         [
-//                             rect
-//                                 [ 
-                                    
-//                                     X props.Rectangle.Pos.X
-//                                     Y props.Rectangle.Pos.Y
-//                                     SVGAttr.Width 125.
-//                                     SVGAttr.Height 100.
-//                                     SVGAttr.Fill color
-//                                     SVGAttr.FillOpacity 0.4
-//                                     SVGAttr.Stroke "Black"
-//                                     SVGAttr.StrokeWidth 1
-//                                 ]
-//                                 [ ]
-
-//                             text
-//                                 [ X (props.Rectangle.Pos.X + 60.) 
-//                                   Y props.Rectangle.Pos.Y
-//                                   Style
-//                                         [
-//                                              TextAnchor "middle"
-//                                              DominantBaseline "hanging"
-//                                              FontSize "15px"
-//                                              FontWeight "Normal"
-//                                              Fill "Black"
-//                                          ]
-//                                 ] 
-//                                 [str <| sprintf "adder(%d:0)" x]
-//                         ]
-                            
-
-                    
-//             )
-//     | And  ->
-//             FunctionComponent.Of(
-//                 fun (props : RenderSymbolProps) -> (ANDfunc (props : RenderSymbolProps) true)
-//             )
-//     | Nand  ->
-//             FunctionComponent.Of(
-//                 fun (props : RenderSymbolProps) -> (ANDfunc (props : RenderSymbolProps) false)
-//             )
-//     |_-> failwithf "not yet implemented"
 
 /// View function for symbol layer of SVG
 let view (model : Model) (dispatch : Msg -> unit) = 
