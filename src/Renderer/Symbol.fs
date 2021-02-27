@@ -26,6 +26,9 @@ type SymbolCategory =
     | Gates
     | Adder
     | FlipFlop
+    | Multiplexer
+    | Wire
+    | Registers
     | Unknown
 
 type Symbol =
@@ -80,6 +83,11 @@ let getSymbolCategory (comp : CommonTypes.ComponentType) =
     | NbitsAdder x -> Adder
     | DFF | DFFE -> FlipFlop
     | Input y | Output y -> IO
+    | IOLabel -> IO
+    | Mux2 | Demux2 -> Multiplexer
+    | MergeWires -> Wire
+    | SplitWire x -> Wire
+    | Register x | RegisterE x -> Registers
     |_-> Unknown
 
 
@@ -95,6 +103,8 @@ let getGateDisplayChar (comp: CommonTypes.ComponentType) =
     | NbitsAdder x -> sprintf "%A" (x - 1) 
     | DFF -> "DFF"
     | DFFE -> "DFFE"
+    | Register x -> sprintf "%A" (x) 
+    | RegisterE x -> sprintf "%A" (x) 
     |_-> ""
 
 
@@ -108,6 +118,8 @@ let IsEnable (comp: CommonTypes.ComponentType) =
     match comp with 
     | DFFE -> true
     | DFF -> false
+    | Register x -> false
+    | RegisterE x -> true
     | _-> false
 
 let isInput (comp: CommonTypes.ComponentType) = 
@@ -115,7 +127,22 @@ let isInput (comp: CommonTypes.ComponentType) =
     | Input a -> true
     | _-> false
 
-// let IsClocked (comp: ComponentType) = 
+let isLabel (comp : CommonTypes.ComponentType) = 
+    match comp with
+    | IOLabel -> true
+    | _-> false
+
+let isMux (comp: ComponentType) = 
+    match comp with
+    | Mux2 -> true
+    | _-> false
+
+let isMerge (comp: ComponentType) = 
+    match comp with
+    | MergeWires -> true
+    | _-> false
+
+// let IsClocked (comp: ComponentType) = unused
 //-----------------------Skeleton Message type for symbols---------------------//
 
 /// Symbol creation: a unique Id is given to the symbol, found from uuid.
@@ -141,6 +168,13 @@ let init () =
         ({X = 300.; Y = 800.}, NbitsAdder 5);
         ({X = 200.; Y = 500.}, Input 5);
         ({X = 300.; Y = 500.}, Output 5);
+        ({X = 200.; Y = 200.}, IOLabel);
+        ({X = 325.; Y = 300.}, Mux2);
+        ({X = 250.; Y = 100.}, Demux2);
+        ({X = 75.; Y = 275.}, Register 8);
+        ({X = 50.; Y = 400.}, RegisterE 10);
+        ({X = 100.; Y = 100.}, MergeWires);
+        ({X = 100.; Y = 200.}, SplitWire 10);
         ({X = 300.; Y = 100.}, DFF);
         ({X = 500.; Y = 200.}, DFFE);
         ({X = 470.; Y = 500.}, Or);
@@ -590,6 +624,26 @@ let renderIO =
                             SVGAttr.StrokeWidth 1
                         ]
                         [ ]
+
+                else if isLabel props.Rectangle.Type then
+                    polygon
+                        [ 
+                            SVGAttr.Points (sprintf "%0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f"
+                                                    (props.Rectangle.Pos.X + 20.) (props.Rectangle.Pos.Y + 50.)
+                                                    (props.Rectangle.Pos.X ) (props.Rectangle.Pos.Y + 25.)
+                                                    (props.Rectangle.Pos.X + 20.) (props.Rectangle.Pos.Y) 
+                                                    (props.Rectangle.Pos.X + 50.) (props.Rectangle.Pos.Y) 
+                                                    (props.Rectangle.Pos.X + 70.) (props.Rectangle.Pos.Y + 25.) 
+                                                    (props.Rectangle.Pos.X + 50.) (props.Rectangle.Pos.Y + 50.)) 
+                                                    
+                            X props.Rectangle.Pos.X
+                            Y props.Rectangle.Pos.Y
+                            SVGAttr.Fill color
+                            SVGAttr.FillOpacity 0.75
+                            SVGAttr.Stroke "Black"
+                            SVGAttr.StrokeWidth 1
+                        ]
+                        [ ]
                 else 
                     polygon
                         [ 
@@ -607,9 +661,295 @@ let renderIO =
                             SVGAttr.StrokeWidth 1
                         ]
                         [ ]
+                ]
+    )
+
+let renderMux = 
+    FunctionComponent.Of(
+        fun (props : RenderSymbolProps) ->
+        let handleMouseMove =
+            Hooks.useRef(fun (ev : Types.Event) ->
+                let ev = ev :?> Types.MouseEvent
+                // x,y coordinates here do not compensate for transform in Sheet
+                // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
+                Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                |> props.Dispatch
+            )
+
+        let color =
+            if props.Rectangle.IsDragging then
+                "green"
+            else
+                "grey"
+        g   [ 
+                OnMouseUp (fun ev -> 
+                        document.removeEventListener("mousemove", handleMouseMove.current)
+                        EndDragging props.Rectangle.Id
+                        |> props.Dispatch
+                    )
+                OnMouseDown (fun ev -> 
+                    // See note above re coords wrong if zoom <> 1.0
+                    StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                    |> props.Dispatch
+                    document.addEventListener("mousemove", handleMouseMove.current)
+                )
+            ]
+            [   if isMux props.Rectangle.Type then
+                    polygon
+                        [ 
+                            SVGAttr.Points (sprintf "%0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f"
+                                                        props.Rectangle.Pos.X props.Rectangle.Pos.Y
+                                                        (props.Rectangle.Pos.X + 30.)(props.Rectangle.Pos.Y + 25.)
+                                                        (props.Rectangle.Pos.X + 30.) (props.Rectangle.Pos.Y + 45.) 
+                                                        (props.Rectangle.Pos.X) (props.Rectangle.Pos.Y + 70.))
+                            X props.Rectangle.Pos.X
+                            Y props.Rectangle.Pos.Y
+                            SVGAttr.Fill color
+                            SVGAttr.FillOpacity 0.75
+                            SVGAttr.Stroke "Black"
+                            SVGAttr.StrokeWidth 1
+                        ]
+                        [ ]
+                    
+                    text
+                        [ X (props.Rectangle.Pos.X + 5.) 
+                          Y (props.Rectangle.Pos.Y + 23.3)
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "8px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str "0"]
+
+                    text
+                        [ X (props.Rectangle.Pos.X + 5.) 
+                          Y (props.Rectangle.Pos.Y + 46.7)
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "8px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str "1"]
+                else 
+                    polygon
+                        [ 
+                            SVGAttr.Points (sprintf "%0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f"
+                                                        props.Rectangle.Pos.X props.Rectangle.Pos.Y
+                                                        (props.Rectangle.Pos.X + 30.)(props.Rectangle.Pos.Y - 25.)
+                                                        (props.Rectangle.Pos.X + 30.) (props.Rectangle.Pos.Y + 45.) 
+                                                        (props.Rectangle.Pos.X) (props.Rectangle.Pos.Y + 21.7))
+                            X props.Rectangle.Pos.X
+                            Y props.Rectangle.Pos.Y
+                            SVGAttr.Fill color
+                            SVGAttr.FillOpacity 0.75
+                            SVGAttr.Stroke "Black"
+                            SVGAttr.StrokeWidth 1
+                        ]
+                        [ ]
+                    
+                    text
+                        [ X (props.Rectangle.Pos.X + 25.) 
+                          Y (props.Rectangle.Pos.Y )
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "8px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str "0"]
+
+                    text
+                        [ X (props.Rectangle.Pos.X + 25.) 
+                          Y (props.Rectangle.Pos.Y + 23.3)
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "8px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str "1"]                                                              
+
+                ]
+    )
+
+let renderWire = 
+    FunctionComponent.Of(
+        fun (props : RenderSymbolProps) ->
+        let displaychar = getGateDisplayChar props.Rectangle.Type
+        let handleMouseMove =
+            Hooks.useRef(fun (ev : Types.Event) ->
+                let ev = ev :?> Types.MouseEvent
+                // x,y coordinates here do not compensate for transform in Sheet
+                // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
+                Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                |> props.Dispatch
+            )
+
+        g   [ 
+                OnMouseUp (fun ev -> 
+                        document.removeEventListener("mousemove", handleMouseMove.current)
+                        EndDragging props.Rectangle.Id
+                        |> props.Dispatch
+                    )
+                OnMouseDown (fun ev -> 
+                    // See note above re coords wrong if zoom <> 1.0
+                    StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                    |> props.Dispatch
+                    document.addEventListener("mousemove", handleMouseMove.current)
+                )
+            ]
+            [                                                                                           
+                if isMerge props.Rectangle.Type then
+                    line [ X1 (props.Rectangle.Pos.X); Y1 (props.Rectangle.Pos.Y); X2 (props.Rectangle.Pos.X + 20.); Y2 (props.Rectangle.Pos.Y); Style[Stroke "Black"]] []
+                    line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y); X2 (props.Rectangle.Pos.X + 20.); Y2 (props.Rectangle.Pos.Y + 20.); Style[Stroke "Black"]] []
+                    line [ X1 (props.Rectangle.Pos.X ); Y1 (props.Rectangle.Pos.Y + 20.); X2 (props.Rectangle.Pos.X + 20.); Y2 (props.Rectangle.Pos.Y + 20.); Style[Stroke "Black"]] []
+                    line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y + 10.); X2 (props.Rectangle.Pos.X + 40.); Y2 (props.Rectangle.Pos.Y + 10.); Style[Stroke "indigo"; StrokeWidth "3"]] []
+                else
+                    line [ X1 (props.Rectangle.Pos.X); Y1 (props.Rectangle.Pos.Y); X2 (props.Rectangle.Pos.X + 20.); Y2 (props.Rectangle.Pos.Y); Style[Stroke "indigo"; StrokeWidth "3"]] []
+                    line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y ); X2 (props.Rectangle.Pos.X + 20.); Y2 (props.Rectangle.Pos.Y - 10.); Style[Stroke "indigo"; StrokeWidth "3"]] []
+                    line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y - 10.); X2 (props.Rectangle.Pos.X + 40.); Y2 (props.Rectangle.Pos.Y - 10.); Style[Stroke "indigo"; StrokeWidth "3"]] []
+                    line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y); X2 (props.Rectangle.Pos.X + 20.); Y2 (props.Rectangle.Pos.Y + 10.); Style[Stroke "Black"]] []
+                    line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y + 10.); X2 (props.Rectangle.Pos.X + 40.); Y2 (props.Rectangle.Pos.Y + 10.); Style[Stroke "Black"]] []
             ]
     )
 
+let renderRegister = 
+    FunctionComponent.Of(
+        fun (props : RenderSymbolProps) ->
+        let displaychar = getGateDisplayChar props.Rectangle.Type
+        let handleMouseMove =
+            Hooks.useRef(fun (ev : Types.Event) ->
+                let ev = ev :?> Types.MouseEvent
+                // x,y coordinates here do not compensate for transform in Sheet
+                // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
+                Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                |> props.Dispatch
+            )
+
+        let color =
+            if props.Rectangle.IsDragging then
+                "green"
+            else
+                "grey"
+        g   [ 
+                OnMouseUp (fun ev -> 
+                        document.removeEventListener("mousemove", handleMouseMove.current)
+                        EndDragging props.Rectangle.Id
+                        |> props.Dispatch
+                    )
+                OnMouseDown (fun ev -> 
+                    // See note above re coords wrong if zoom <> 1.0
+                    StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                    |> props.Dispatch
+                    document.addEventListener("mousemove", handleMouseMove.current)
+                )
+            ]
+            [
+                rect
+                    [ 
+                        
+                        X props.Rectangle.Pos.X
+                        Y props.Rectangle.Pos.Y
+                        SVGAttr.Width 125.
+                        SVGAttr.Height 100.
+                        SVGAttr.Fill color
+                        SVGAttr.FillOpacity 0.75
+                        SVGAttr.Stroke "Black"
+                        SVGAttr.StrokeWidth 1
+                    ]
+                    [ ]
+
+                text
+                    [ X (props.Rectangle.Pos.X + 60.) 
+                      Y (props.Rectangle.Pos.Y + 1.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "15px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "REG" + displaychar]
+                
+                //left symbols
+                text
+                    [ X (props.Rectangle.Pos.X + 20.) 
+                      Y (props.Rectangle.Pos.Y + 50.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "10px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str "data-in"]
+
+                text
+                    [ X (props.Rectangle.Pos.X + 18.) 
+                      Y (props.Rectangle.Pos.Y + 80.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "12.5px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str "clk"]
+                //right symbol
+                text
+                    [ X (props.Rectangle.Pos.X + 100.) 
+                      Y (props.Rectangle.Pos.Y + 50.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "10px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str "data-out"]
+                //optional enable
+                if IsEnable props.Rectangle.Type
+                then
+                    text
+                        [ X (props.Rectangle.Pos.X + 60.) 
+                          Y (props.Rectangle.Pos.Y + 85.)
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "10px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str "EN"]
+                // clock indentation with two intersecting lines
+                line [ X1 (props.Rectangle.Pos.X); Y1 (props.Rectangle.Pos.Y + 80.); X2 (props.Rectangle.Pos.X + 7.5); Y2 (props.Rectangle.Pos.Y + 85.); Style[Stroke "Black"]] []
+                line [ X1 (props.Rectangle.Pos.X); Y1 (props.Rectangle.Pos.Y + 90.); X2 (props.Rectangle.Pos.X + 7.5); Y2 (props.Rectangle.Pos.Y + 85.); Style[Stroke "Black"]] []
+            ]
+    )
 /// View for one symbol with caching for efficient execution when input does not change
 let private renderSymbol dispatch (sym: Symbol) =
     let symbolCategory = getSymbolCategory sym.Type
@@ -638,7 +978,26 @@ let private renderSymbol dispatch (sym: Symbol) =
             Dispatch = dispatch
             key = (string) sym.Id
         })
+    | Multiplexer ->
+        renderMux({
+            Rectangle = sym
+            Dispatch = dispatch
+            key = (string) sym.Id
+        })
+    | Wire ->
+        renderWire({
+            Rectangle = sym
+            Dispatch = dispatch
+            key = (string) sym.Id
+        })
+    | Registers ->
+        renderRegister({
+            Rectangle = sym
+            Dispatch = dispatch
+            key = (string) sym.Id
+        })
     |_-> failwith "not implemented"
+
 
 /// View function for symbol layer of SVG
 let view (model : Model) (dispatch : Msg -> unit) = 
