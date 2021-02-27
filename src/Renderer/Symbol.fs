@@ -88,7 +88,13 @@ let getSymbolCategory (comp : CommonTypes.ComponentType) =
     | MergeWires -> Wire
     | SplitWire x -> Wire
     | Register x | RegisterE x -> Registers
+    | BusSelection (x,y) -> Buses
     |_-> Unknown
+
+let getBus (comp:CommonTypes.ComponentType) =
+    match comp with 
+    | BusSelection (x,y) -> ((x + y - 1) , y)
+    |_-> failwithf "not implemented for this symbol"
 
 
 let getGateDisplayChar (comp: CommonTypes.ComponentType) = 
@@ -175,6 +181,8 @@ let init () =
         ({X = 50.; Y = 400.}, RegisterE 10);
         ({X = 100.; Y = 100.}, MergeWires);
         ({X = 100.; Y = 200.}, SplitWire 10);
+        ({X = 100.; Y = 650.}, BusSelection (10,5));
+        ({X = 100.; Y = 700.}, BusSelection (10,0));
         ({X = 300.; Y = 100.}, DFF);
         ({X = 500.; Y = 200.}, DFFE);
         ({X = 470.; Y = 500.}, Or);
@@ -738,6 +746,7 @@ let renderMux =
                                  ]
                         ] 
                         [str "1"]
+                    line [ X1 (props.Rectangle.Pos.X + 15.); Y1 (props.Rectangle.Pos.Y + 58.); X2 (props.Rectangle.Pos.X + 15.); Y2 (props.Rectangle.Pos.Y + 65.); Style[Stroke "Black"]] [] 
                 else 
                     polygon
                         [ 
@@ -781,7 +790,9 @@ let renderMux =
                                      Fill "Black"
                                  ]
                         ] 
-                        [str "1"]                                                              
+                        [str "1"] 
+
+                    line [ X1 (props.Rectangle.Pos.X + 15.); Y1 (props.Rectangle.Pos.Y + 33.); X2 (props.Rectangle.Pos.X + 15.); Y2 (props.Rectangle.Pos.Y + 40.); Style[Stroke "Black"]] []                                                                       
 
                 ]
     )
@@ -950,6 +961,75 @@ let renderRegister =
                 line [ X1 (props.Rectangle.Pos.X); Y1 (props.Rectangle.Pos.Y + 90.); X2 (props.Rectangle.Pos.X + 7.5); Y2 (props.Rectangle.Pos.Y + 85.); Style[Stroke "Black"]] []
             ]
     )
+
+let renderBus = 
+    FunctionComponent.Of(
+        fun (props : RenderSymbolProps) ->
+        let handleMouseMove =
+            Hooks.useRef(fun (ev : Types.Event) ->
+                let ev = ev :?> Types.MouseEvent
+                // x,y coordinates here do not compensate for transform in Sheet
+                // and are wrong unless zoom=1.0 MouseMsg coordinates are correctly compensated.
+                Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                |> props.Dispatch
+            )
+
+        let color =
+            if props.Rectangle.IsDragging then
+                "green"
+            else
+                "grey"
+        let bus = getBus props.Rectangle.Type
+        let msb = fst(bus)
+        let lsb = snd(bus)
+        g   [ 
+                OnMouseUp (fun ev -> 
+                        document.removeEventListener("mousemove", handleMouseMove.current)
+                        EndDragging props.Rectangle.Id
+                        |> props.Dispatch
+                    )
+                OnMouseDown (fun ev -> 
+                    // See note above re coords wrong if zoom <> 1.0
+                    StartDragging (props.Rectangle.Id, posOf ev.pageX ev.pageY)
+                    |> props.Dispatch
+                    document.addEventListener("mousemove", handleMouseMove.current)
+                )
+            ]
+            [   
+                polygon
+                    [ 
+                        SVGAttr.Points (sprintf "%0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f"
+                                                    props.Rectangle.Pos.X props.Rectangle.Pos.Y
+                                                    (props.Rectangle.Pos.X + 30.) props.Rectangle.Pos.Y
+                                                    (props.Rectangle.Pos.X + 35.) (props.Rectangle.Pos.Y + 7.) 
+                                                    (props.Rectangle.Pos.X + 45.) (props.Rectangle.Pos.Y + 7.)
+                                                    (props.Rectangle.Pos.X + 45.) (props.Rectangle.Pos.Y + 14.)
+                                                    (props.Rectangle.Pos.X + 35.) (props.Rectangle.Pos.Y + 14.)
+                                                    (props.Rectangle.Pos.X + 30.) (props.Rectangle.Pos.Y + 21.)
+                                                    props.Rectangle.Pos.X (props.Rectangle.Pos.Y + 21.))
+                        X props.Rectangle.Pos.X
+                        Y props.Rectangle.Pos.Y
+                        SVGAttr.Fill color
+                        SVGAttr.FillOpacity 0.75
+                        SVGAttr.Stroke "Black"
+                        SVGAttr.StrokeWidth 1
+                    ]
+                    [ ]
+                text
+                    [ X (props.Rectangle.Pos.X + 15.) 
+                      Y (props.Rectangle.Pos.Y + 5.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "10px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| "[" + sprintf("%A") msb + ".." + sprintf("%A") lsb + "]"]
+                ]
+    )
 /// View for one symbol with caching for efficient execution when input does not change
 let private renderSymbol dispatch (sym: Symbol) =
     let symbolCategory = getSymbolCategory sym.Type
@@ -992,6 +1072,12 @@ let private renderSymbol dispatch (sym: Symbol) =
         })
     | Registers ->
         renderRegister({
+            Rectangle = sym
+            Dispatch = dispatch
+            key = (string) sym.Id
+        })
+    | Buses ->
+        renderBus({
             Rectangle = sym
             Dispatch = dispatch
             key = (string) sym.Id
