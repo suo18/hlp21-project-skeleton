@@ -38,6 +38,12 @@ type MouseT = {
 let uuid():string = import "v4" "uuid"
 
 
+type BoundingBox = {
+    TopLeft : XYPos
+    BottomRight : XYPos
+}
+
+
 //-----------------Code to record and print execution time statistics-------//
 
 let timeNowInMicroS() = 
