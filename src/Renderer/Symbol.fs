@@ -37,7 +37,10 @@ type Symbol =
         LastDragPos : XYPos
         IsDragging : bool
         Id : CommonTypes.ComponentId
-        Type : CommonTypes.ComponentType 
+        Type : CommonTypes.ComponentType
+        bBox : BoundingBox // creates a bounding box for Sheet Module
+        Label : string
+
     }
 
 type Model = Symbol list
@@ -59,7 +62,7 @@ type Msg =
     // | AddCircle of XYPos // used by demo code to add a circle, will remove
     | DeleteSymbol of sId:CommonTypes.ComponentId 
     | UpdateSymbolModelWithComponent of CommonTypes.Component // Issie interface
-    | AddSymbol of sTyp : CommonTypes.ComponentType * pagepos: XYPos // tells you the type of component it is and its starting position
+    | AddSymbol of sTyp : CommonTypes.ComponentType * pagepos: XYPos * label: string // tells you the type of component it is and its starting position
 
 
 //---------------------------------helper types and functions----------------//
@@ -74,6 +77,18 @@ let posAdd (a: XYPos) (b: XYPos) =
 
 let posOf x y = {X=x;Y=y}
 
+let createBBox (cat: SymbolCategory) (pos: XYPos) = 
+    match cat with 
+    | Gates -> {TopLeft = { pos with Y = pos.Y - 30. } ; BottomRight= { X = pos.X + 105.; Y = pos.Y + 95.}}
+    // Gates -> {TopLeft = { pos with Y = pos.Y - 20. } ; BottomRight= { X = pos.X + 75.; Y = pos.Y + 95.}}
+    | Adder -> {TopLeft = {X = pos.X - 5. ; Y = pos.Y + 30.} ; BottomRight = {X = pos.X + 95.; Y = pos.Y + 155.}}
+    | FlipFlop -> {TopLeft = { X = pos.X - 5. ; Y = pos.Y - 30.} ; BottomRight= { X = pos.X + 80.; Y = pos.Y + 80.}}
+    | IO -> {TopLeft = {X = pos.X - 5. ; Y = pos.Y - 30.} ; BottomRight = {X = pos.X + 75. ; Y = pos.Y + 55.}}
+    | Wire -> {TopLeft = {X = pos.X - 5.; Y = pos.Y - 40.} ; BottomRight = { X = pos.X + 45.; Y = pos.Y + 20.}}
+    | Multiplexer -> {TopLeft = {X = pos.X - 5.; Y = pos.Y - 30.} ; BottomRight = {X = pos.X + 35.; Y = pos.Y + 75.}}
+    | Buses -> {TopLeft = {X = pos.X - 5.; Y = pos.Y - 30.} ; BottomRight = {X = pos.X + 80.; Y = pos.Y + 26.}}
+    | Registers -> {TopLeft = {X = pos.X - 5.; Y = pos.Y - 30.} ; BottomRight = {X = pos.X + 130.; Y = pos.Y + 105.}}
+    | _-> failwithf "not implemented"
 
 //-----------------------------Skeleton Model Type for symbols----------------//
 
@@ -111,6 +126,8 @@ let getGateDisplayChar (comp: CommonTypes.ComponentType) =
     | DFFE -> "DFFE"
     | Register x -> sprintf "%A" (x) 
     | RegisterE x -> sprintf "%A" (x) 
+    | Input x -> sprintf "%A" (x - 1) 
+    | Output x -> sprintf "%A" (x - 1) 
     |_-> ""
 
 
@@ -148,7 +165,6 @@ let isMerge (comp: ComponentType) =
     | MergeWires -> true
     | _-> false
 
-// let IsClocked (comp: ComponentType) = unused
 //-----------------------Skeleton Message type for symbols---------------------//
 
 /// Symbol creation: a unique Id is given to the symbol, found from uuid.
@@ -156,41 +172,43 @@ let isMerge (comp: ComponentType) =
 /// in its initial form. This is called by the AddSymbol message and need not be exposed.
     /// 
 
-let createNewSymbol (input: XYPos * CommonTypes.ComponentType) =
-    let (pos, compTyp) = input
+let createNewSymbol (input: XYPos * CommonTypes.ComponentType * string) =
+    let (pos, compTyp, labl) = input
     {
         Pos = pos
         LastDragPos = {X=0. ; Y=0.} // initial value can always be this                          //comment this block later
         IsDragging = false // initial value can always be this
         Id = CommonTypes.ComponentId (Helpers.uuid()) 
         Type = compTyp
+        bBox = createBBox (getSymbolCategory compTyp) (pos)
+        Label = labl
     }
 
 /// Dummy function for test. The real init would probably have no symbols.
 /// we just use the dummy function here as an intialiser like we did in tick 3
 let init () = 
     [
-        ({X = 300.; Y = 600.}, And);
-        ({X = 300.; Y = 800.}, NbitsAdder 5);
-        ({X = 200.; Y = 500.}, Input 5);
-        ({X = 300.; Y = 500.}, Output 5);
-        ({X = 200.; Y = 200.}, IOLabel);
-        ({X = 325.; Y = 300.}, Mux2);
-        ({X = 250.; Y = 100.}, Demux2);
-        ({X = 75.; Y = 275.}, Register 8);
-        ({X = 50.; Y = 400.}, RegisterE 10);
-        ({X = 100.; Y = 100.}, MergeWires);
-        ({X = 100.; Y = 200.}, SplitWire 10);
-        ({X = 100.; Y = 650.}, BusSelection (10,5));
-        ({X = 100.; Y = 700.}, BusSelection (10,0));
-        ({X = 300.; Y = 100.}, DFF);
-        ({X = 500.; Y = 200.}, DFFE);
-        ({X = 470.; Y = 500.}, Or);
-        ({X = 450.; Y = 600.}, Not);
-        ({X = 470.; Y = 400.}, Nor);
-        ({X = 650.; Y = 700.}, Xor);
-        ({X = 650.; Y = 600.}, Xnor);
-        ({X = 300.; Y = 700.}, Nand)
+        ({X = 300.; Y = 600.}, And, "G1");
+        ({X = 300.; Y = 800.}, NbitsAdder 5, "A1");
+        ({X = 200.; Y = 500.}, Input 5, "I1");
+        ({X = 300.; Y = 500.}, Output 5, "01");
+        ({X = 200.; Y = 200.}, IOLabel, "L1");
+        ({X = 325.; Y = 300.}, Mux2, "MUX1");
+        ({X = 250.; Y = 100.}, Demux2, "DM1");
+        ({X = 75.; Y = 275.}, Register 8, "REG1");
+        ({X = 50.; Y = 400.}, RegisterE 10, "REG2");
+        ({X = 100.; Y = 100.}, MergeWires, "MW1");
+        ({X = 100.; Y = 200.}, SplitWire 10, "MW2");
+        ({X = 100.; Y = 650.}, BusSelection (10,5), "BS1");
+        ({X = 100.; Y = 700.}, BusSelection (10,0), "BS2");
+        ({X = 300.; Y = 100.}, DFF, "DFF1");
+        ({X = 500.; Y = 200.}, DFFE, "DFF2");
+        ({X = 470.; Y = 500.}, Or, "G2");
+        ({X = 450.; Y = 600.}, Not, "G3");
+        ({X = 470.; Y = 400.}, Nor, "G4");
+        ({X = 650.; Y = 700.}, Xor, "G5");
+        ({X = 650.; Y = 600.}, Xnor, "G6");
+        ({X = 300.; Y = 700.}, Nand, "G7")
     ]
     |> List.map createNewSymbol
     , Cmd.none
@@ -198,8 +216,8 @@ let init () =
 /// update function which displays symbols
 let update (msg : Msg) (model : Model): Model*Cmd<'a>  =
     match msg with
-    | AddSymbol (sTyp,pos) -> 
-        (createNewSymbol (pos,sTyp)):: model, Cmd.none
+    | AddSymbol (sTyp,pos,label) -> 
+        (createNewSymbol (pos,sTyp,label)):: model, Cmd.none
     | DeleteSymbol sId -> 
         List.filter (fun sym -> sym.Id <> sId) model, Cmd.none
     | StartDragging (sId, pagePos) ->
@@ -287,8 +305,6 @@ let renderGate =
                     |> props.Dispatch
                     document.addEventListener("mousemove", handleMouseMove.current)
                 )
-                // if isOutput then
-                //     SVGAttr.Transform (str "rotate(180 0 0)" )
             ]
             [
                 rect
@@ -318,9 +334,19 @@ let renderGate =
                              ]
                     ] 
                     [str displaychar]
-
-                // line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 15.); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 15.); Style[Stroke "Black"]] []
-                // line [ X1 (props.Rectangle.Pos.X - 20.); Y1 (props.Rectangle.Pos.Y + 60.); X2 (props.Rectangle.Pos.X); Y2 (props.Rectangle.Pos.Y + 60.); Style[Stroke "Black"]] []
+                text
+                    [ X (props.Rectangle.Pos.X + 35.) 
+                      Y (props.Rectangle.Pos.Y - 20.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "20px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str props.Rectangle.Label]                   
                 line [ X1 (props.Rectangle.Pos.X + 75.); Y1 (props.Rectangle.Pos.Y + 37.5); X2 (props.Rectangle.Pos.X + 95.); Y2 (props.Rectangle.Pos.Y + 37.5); Style[Stroke "Black"]] []
                 if getIsInverter props.Rectangle.Type
                 then line [ X1 (props.Rectangle.Pos.X + 75.); Y1 (props.Rectangle.Pos.Y + 25.); X2 (props.Rectangle.Pos.X + 85.); Y2 (props.Rectangle.Pos.Y + 37.5); Style[Stroke "Black"]] []
@@ -372,6 +398,20 @@ let renderNbitsAdder =
                         SVGAttr.StrokeWidth 1
                     ]
                     [ ]
+
+                text
+                    [ X (props.Rectangle.Pos.X + 40.) 
+                      Y (props.Rectangle.Pos.Y - 20.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "20px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str props.Rectangle.Label]   
 
                 text
                     [ X (props.Rectangle.Pos.X + 45.) 
@@ -507,6 +547,19 @@ let renderFlipFlop =
                         SVGAttr.StrokeWidth 1
                     ]
                     [ ]
+                text
+                    [ X (props.Rectangle.Pos.X + 35.) 
+                      Y (props.Rectangle.Pos.Y - 20.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "20px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str props.Rectangle.Label]   
 
                 text
                     [ X (props.Rectangle.Pos.X + 35.) 
@@ -597,8 +650,7 @@ let renderIO =
                 Dragging(props.Rectangle.Id, posOf ev.pageX ev.pageY)
                 |> props.Dispatch
             )
-        let rotation = 180
-
+        let displaychar = getGateDisplayChar props.Rectangle.Type
         let color =
             if props.Rectangle.IsDragging then
                 "green"
@@ -617,7 +669,8 @@ let renderIO =
                     document.addEventListener("mousemove", handleMouseMove.current)
                 )
             ]
-            [   if isInput props.Rectangle.Type then
+            [
+                if isInput props.Rectangle.Type then
                     polygon
                         [ 
                             SVGAttr.Points (sprintf "%0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f %0.2f, %0.2f"
@@ -669,6 +722,20 @@ let renderIO =
                             SVGAttr.StrokeWidth 1
                         ]
                         [ ]
+
+                text
+                    [ X (props.Rectangle.Pos.X + 35.) 
+                      Y (props.Rectangle.Pos.Y - 20.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "20px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str <| props.Rectangle.Label + "(" + displaychar + ":0)"]   
                 ]
     )
 
@@ -747,6 +814,21 @@ let renderMux =
                         ] 
                         [str "1"]
                     line [ X1 (props.Rectangle.Pos.X + 15.); Y1 (props.Rectangle.Pos.Y + 58.); X2 (props.Rectangle.Pos.X + 15.); Y2 (props.Rectangle.Pos.Y + 65.); Style[Stroke "Black"]] [] 
+
+                    text
+                        [ X (props.Rectangle.Pos.X + 20.) 
+                          Y (props.Rectangle.Pos.Y - 20.)
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "20px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str props.Rectangle.Label]   
+
                 else 
                     polygon
                         [ 
@@ -792,8 +874,21 @@ let renderMux =
                         ] 
                         [str "1"] 
 
-                    line [ X1 (props.Rectangle.Pos.X + 15.); Y1 (props.Rectangle.Pos.Y + 33.); X2 (props.Rectangle.Pos.X + 15.); Y2 (props.Rectangle.Pos.Y + 40.); Style[Stroke "Black"]] []                                                                       
-
+                    line [ X1 (props.Rectangle.Pos.X + 15.); Y1 (props.Rectangle.Pos.Y + 33.); X2 (props.Rectangle.Pos.X + 15.); Y2 (props.Rectangle.Pos.Y + 40.); Style[Stroke "Black"]] []  
+                    text
+                        [ X (props.Rectangle.Pos.X + 10.) 
+                          Y (props.Rectangle.Pos.Y - 40.)
+                          Style
+                                [
+                                     TextAnchor "middle"
+                                     DominantBaseline "hanging"
+                                     FontSize "20px"
+                                     FontWeight "Normal"
+                                     Fill "Black"
+                                 ]
+                        ] 
+                        [str props.Rectangle.Label]   
+                                                                     
                 ]
     )
 
@@ -835,6 +930,20 @@ let renderWire =
                     line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y - 10.); X2 (props.Rectangle.Pos.X + 40.); Y2 (props.Rectangle.Pos.Y - 10.); Style[Stroke "indigo"; StrokeWidth "3"]] []
                     line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y); X2 (props.Rectangle.Pos.X + 20.); Y2 (props.Rectangle.Pos.Y + 10.); Style[Stroke "Black"]] []
                     line [ X1 (props.Rectangle.Pos.X + 20.); Y1 (props.Rectangle.Pos.Y + 10.); X2 (props.Rectangle.Pos.X + 40.); Y2 (props.Rectangle.Pos.Y + 10.); Style[Stroke "Black"]] []
+
+                text
+                    [ X (props.Rectangle.Pos.X + 10.) 
+                      Y (props.Rectangle.Pos.Y - 30.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "20px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str props.Rectangle.Label]   
             ]
     )
 
@@ -883,6 +992,19 @@ let renderRegister =
                         SVGAttr.StrokeWidth 1
                     ]
                     [ ]
+                text
+                    [ X (props.Rectangle.Pos.X + 60.) 
+                      Y (props.Rectangle.Pos.Y - 20.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "20px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str props.Rectangle.Label]   
 
                 text
                     [ X (props.Rectangle.Pos.X + 60.) 
@@ -1016,6 +1138,20 @@ let renderBus =
                     ]
                     [ ]
                 text
+                    [ X (props.Rectangle.Pos.X + 20.) 
+                      Y (props.Rectangle.Pos.Y - 20.)
+                      Style
+                            [
+                                 TextAnchor "middle"
+                                 DominantBaseline "hanging"
+                                 FontSize "20px"
+                                 FontWeight "Normal"
+                                 Fill "Black"
+                             ]
+                    ] 
+                    [str props.Rectangle.Label]   
+
+                text
                     [ X (props.Rectangle.Pos.X + 15.) 
                       Y (props.Rectangle.Pos.Y + 5.)
                       Style
@@ -1094,11 +1230,17 @@ let view (model : Model) (dispatch : Msg -> unit) =
 
 //---------------Other interface functions--------------------//
 
+// Check whether our symbol is in our bounding box -> Sheet
+let isSymClicked (pos : XYPos) (sym : Symbol) : bool =
+    match pos with
+    | p when (p.X >= sym.bBox.TopLeft.X) && (p.X <= sym.bBox.BottomRight.X) &&
+             (p.Y >= sym.bBox.TopLeft.Y) && (p.Y <= sym.bBox.BottomRight.Y)  
+        -> true
+    | _-> false
+
 let symbolPos (symModel: Model) (sId: CommonTypes.ComponentId) : XYPos = 
     List.find (fun sym -> sym.Id = sId) symModel
     |> (fun sym -> sym.Pos)
-
-
 
 /// Update the symbol with matching componentId to comp, or add a new symbol based on comp.
 let updateSymbolModelWithComponent (symModel: Model) (comp:CommonTypes.Component) =
