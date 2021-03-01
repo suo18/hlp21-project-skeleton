@@ -31,6 +31,13 @@ type SymbolCategory =
     | Registers
     | Unknown
 
+type PortInfo = {
+    Pos : XYPos
+    PortNumber : int option
+    PortType : CommonTypes.PortType
+    HostId : CommonTypes.ComponentId 
+}
+
 type Symbol =
     {
         Pos: XYPos
@@ -40,6 +47,7 @@ type Symbol =
         Type : CommonTypes.ComponentType
         bBox : BoundingBox // creates a bounding box for Sheet Module
         Label : string
+        PortInfoList : PortInfo list
 
     }
 
@@ -182,6 +190,7 @@ let createNewSymbol (input: XYPos * CommonTypes.ComponentType * string) =
         Type = compTyp
         bBox = createBBox (getSymbolCategory compTyp) (pos)
         Label = labl
+        PortInfoList = []
     }
 
 /// Dummy function for test. The real init would probably have no symbols.
@@ -1238,9 +1247,39 @@ let isSymClicked (pos : XYPos) (sym : Symbol) : bool =
         -> true
     | _-> false
 
+let getAllPortInfo (symModel:Model) : PortInfo list = 
+    symModel |> List.collect (fun sym -> sym.PortInfoList)
+
+let getBoundingBoxOf (symModel: Model) (sId: CommonTypes.ComponentId) : BoundingBox option = 
+    List.tryFind (fun sym -> sym.Id = sId) symModel
+    |> Option.map (fun sym -> sym.bBox)
+
 let symbolPos (symModel: Model) (sId: CommonTypes.ComponentId) : XYPos = 
     List.find (fun sym -> sym.Id = sId) symModel
     |> (fun sym -> sym.Pos)
+
+let getPortInfoOf (symModel: Model) (sId: CommonTypes.ComponentId) : PortInfo list =
+    symModel
+    |> List.filter (fun sym -> sym.Id = sId )
+    |> List.collect (fun sym -> sym.PortInfoList)
+
+let getBusWidth (symbol: Symbol) :  (int list) option =
+    match symbol.Type with 
+    | Input buswidth
+    | NbitsAdder buswidth
+    | SplitWire buswidth
+    | Register buswidth
+    | RegisterE buswidth
+    | Output buswidth ->  Some [buswidth]
+    | AsyncROM memory 
+    | ROM memory
+    | RAM memory -> Some [memory.AddressWidth; memory.WordWidth]
+    |_-> None
+    
+let getBusWidthOf (symModel: Model) (sId: CommonTypes.ComponentId) : (int list) option =
+    symModel 
+    |> List.tryFind (fun sym -> sym.Id = sId)
+    |> Option.bind getBusWidth
 
 /// Update the symbol with matching componentId to comp, or add a new symbol based on comp.
 let updateSymbolModelWithComponent (symModel: Model) (comp:CommonTypes.Component) =
