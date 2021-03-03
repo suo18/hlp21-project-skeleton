@@ -101,7 +101,7 @@ let createBBox (cat: SymbolCategory) (pos: XYPos) =
     | Constants -> {TopLeft = {X = pos.X - 5. ; Y = pos.Y + 30.} ; BottomRight = {X = pos.X + 55.; Y = pos.Y + 45.}}
     | _-> failwithf "not implemented"
 
-//get portinfo for a specific symbol
+//get portinfo for a specific symbol, returns a list of (PortType, PortNumber and Port Position) for all the ports
 // let getportInfo (comp: CommonTypes.ComponentType) (pos :XYPos) = 
 //     match comp with 
 //     | And | Or | Xnor | Xor | Nor | Nand -> [("Input", 0, { pos with Y = pos.Y + 25.}); ("Input", 1; {pos with Y = pos.Y + 50.}); ("Output", 0, {pos with Y = pos.Y + 50.})]
